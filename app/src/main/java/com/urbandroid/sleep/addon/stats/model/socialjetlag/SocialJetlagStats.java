@@ -12,11 +12,22 @@ import com.urbandroid.util.ScienceUtil;
 
 import org.apache.commons.math3.util.Pair;
 
+import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
+import org.joda.time.Duration;
+import org.joda.time.Interval;
+
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeMap;
 
 public class SocialJetlagStats {
 
@@ -64,6 +75,163 @@ public class SocialJetlagStats {
         return new SocialJetlagStats(records.narrow(from, to), useUTCforIrregularity);
     }
 
+
+
+    /**
+     * Splits a date that over flows to the next day into two intervals
+     * @param startTime StartTime of an interval that overflows
+     * @param endTime EndTime of an interval that overflows
+     * @return Interval[] with spliced times
+     */
+    private Interval[] splitOverFlowingDate(DateTime startTime, DateTime endTime){
+        DateTime firstIntervalEndTime = new DateTime(
+                startTime.year().get(), startTime.monthOfYear().get(), startTime.dayOfMonth().get(), 23, 59
+        ).withZoneRetainFields(DateTimeZone.UTC);
+
+        DateTime secondIntervalStartTime = new DateTime(
+                endTime.year().get(), endTime.monthOfYear().get(), endTime.dayOfMonth().get(), 00, 00
+        ).withZoneRetainFields(DateTimeZone.UTC);
+
+        return new Interval[] {new Interval(startTime, firstIntervalEndTime), new Interval(secondIntervalStartTime, endTime)};
+    }
+
+    /**
+     * Checks if "nextDate" is the actual next date of prevDate
+     * @param prevDate
+     * @param nextDate
+     * @return
+     */
+    private boolean isNextDate(DateTime prevDate, DateTime nextDate){
+        DateTime actualNextDate = prevDate.plusDays(1);
+        boolean sameYear = (actualNextDate.getYear() == nextDate.getYear());
+        boolean sameMonth = (actualNextDate.getMonthOfYear() == nextDate.getMonthOfYear());
+        boolean sameDate = (actualNextDate.getDayOfMonth() == nextDate.getDayOfMonth());
+
+        return sameYear && sameMonth && sameDate;
+    }
+
+    /**
+     * (1) Converts ChronoRecords to Joda Time Intervals - easier to manipulate than "Date"
+     * (2) Splices Time Intervals Overflowing to Next Day
+     *     (i.e. [Monday 8pm - Tuesday 2am] --> [Monday 8pm - Monday 11:59pm], [Tuesday 12 - 2am]
+     * @param records ChronoRecords including awake times
+     * @return nonOverFlowingTimeIntervals
+     */
+    public List<Interval> convertChronoRecordsToTimeIntervals(ChronoRecords records ){
+        List<ChronoRecord> listOfRecords = records.getRecordsList();
+        List<Interval> nonOverFlowingTimeIntervals = new ArrayList<Interval>();
+
+        for(int i = 0; i< listOfRecords.size(); i++){
+            ChronoRecord cr1 = listOfRecords.get(i);
+
+            DateTime intervalStart = new DateTime(cr1.getFrom()).withZone(DateTimeZone.UTC);
+            DateTime intervalEnd = new DateTime(cr1.getTo()).withZone(DateTimeZone.UTC);
+
+            if(isNextDate(intervalStart, intervalEnd)){
+                // Split interval to two, i1, i2
+                Interval[] splitIntervals = splitOverFlowingDate(intervalStart, intervalEnd);
+                nonOverFlowingTimeIntervals.add(splitIntervals[0]);
+                nonOverFlowingTimeIntervals.add(splitIntervals[1]);
+            }else{
+                nonOverFlowingTimeIntervals.add(new Interval(intervalStart, intervalEnd));
+            }
+        }
+
+        return nonOverFlowingTimeIntervals;
+    }
+
+    /**
+     * (1) Store in values awakeTimes as a 1440 (24 hrs x 60 min) sized bitset
+     *     such that each bitset value is non-empty if in "awake-state"
+     *     0 if in "sleep-state"
+     * (2) Key is the date in String format yyyy-MM-dd
+     * (3) Used for easy cross-day comparison of intersecting time intervals
+     * @param awakeTimes List of intervals that indicate user "awake" state
+     * @return sleepStateByDateMap
+     */
+    public TreeMap<String, BitSet> createSleepStateByDateMap(List<Interval> awakeTimes){
+        TreeMap<String, BitSet> sleepStateByDateMap = new TreeMap<>();
+        for(int j = 0; j < awakeTimes.size(); ++j){
+            Interval awakeInterval = awakeTimes.get(j);
+
+            BitSet sleepState;
+
+            DateTime awakeIntervalStartTime = awakeInterval.getStart();
+            String awakeIntervalFrom = awakeIntervalStartTime.toString("yyyy-MM-dd");
+
+            if(sleepStateByDateMap.containsKey(awakeIntervalFrom)){
+                sleepState = sleepStateByDateMap.get(awakeIntervalFrom);
+            } else{
+                sleepState = new BitSet(1440); // 24 hrs * 60 minutes
+            }
+
+            int startIdx = awakeIntervalStartTime.getMinuteOfDay();
+            int endIdx = awakeInterval.getEnd().getMinuteOfDay();
+            sleepState.set(startIdx, endIdx);
+
+            sleepStateByDateMap.put(awakeIntervalFrom, sleepState);
+        }
+
+        return sleepStateByDateMap;
+    }
+
+    /**
+     * Calculates SRI score given 2 days
+     * It is the (total number of minutes in which a user is in a consistent sleep state) / 1440 mins
+     * Consistent state: prevDay[i] == nextDay[i]
+     * Inconsistent state: prevDay[i] =/= nextDay[i]
+     * @param prevDay
+     * @param nextDay
+     * @return
+     */
+    public float calculateSRI(BitSet prevDay, BitSet nextDay){
+        BitSet minsInconsistentSleepState = (BitSet) prevDay.clone();
+        minsInconsistentSleepState.andNot(nextDay); // store inconsistent sleep state mins in prevDayTmp
+
+        return (1.0f - (minsInconsistentSleepState.length()/1440.f)); // 1 - totalMinsOfInconsistentSleepState
+    }
+
+    /**
+     * Calculates average SRI across multiple, continuous dates
+     * @param sleepStateByDateMap
+     * @return
+     */
+    public float calculateAverageSRI(TreeMap<String, BitSet> sleepStateByDateMap){
+
+        float cumulativeSRI = 0;
+
+        Set keys = sleepStateByDateMap.keySet();
+
+        Iterator nextDayIt = keys.iterator();
+        // iterate through pairs of days to calculate the SRI
+        if (nextDayIt.hasNext()) {
+            nextDayIt.next();
+            for (Iterator prevDayIt = keys.iterator(); prevDayIt.hasNext() && nextDayIt.hasNext();) {
+
+                String prevDateKey = (String) prevDayIt.next();
+                String nextDateKey =  (String) nextDayIt.next();
+                DateTime prevDate = new DateTime(prevDateKey);
+                DateTime nextDate = new DateTime(nextDateKey);
+
+                if(isNextDate(prevDate, nextDate)){
+                    BitSet prevDaySleepStates = sleepStateByDateMap.get(prevDateKey);
+                    BitSet nextDaySleepStates = sleepStateByDateMap.get(nextDateKey);
+
+                    // extract the date and month and if it is one
+                    float sriScore = calculateSRI(prevDaySleepStates, nextDaySleepStates);
+                    cumulativeSRI += sriScore;
+
+                } else{ // TODO: throw an error?
+                    System.out.println("Date ranges must be contiguous to compute the SRI. User provided date ranges: " + prevDateKey + "- " + nextDateKey);
+                }
+            }
+            return cumulativeSRI / (keys.size() - 1); // averageSRI = cumulativeSRI / (numDays - 1)
+        } else { // TODO: throw an error?
+            System.out.println("You need at least two days to calculate SRI! You've only provided one.");
+            return -1.0f;
+        }
+    }
+
     public float getSleepIrregularity() {
         return valueCache.computeIfAbsent("SleepIrregularity", new ValueCache.Supplier() {
             @Override
@@ -71,10 +239,11 @@ public class SocialJetlagStats {
                 if (records.size() < 5) {
                     return -1f;
                 } else {
-                    float[] midSleeps = useUTCforIrregularity ? records.getMidSleepUTC() : records.getMidSleeps();
-                    float midSleepStd = CyclicFloatKt.stdev(midSleeps, 24f);
-                    float sleepLenStd = ScienceUtil.stddev(records.getLengths());
-                    return (midSleepStd + sleepLenStd) / 2;
+
+                    List<Interval> awakeTimes = convertChronoRecordsToTimeIntervals(records);
+                    TreeMap<String, BitSet> sleepStateByDateMap = createSleepStateByDateMap(awakeTimes);
+
+                    return calculateAverageSRI(sleepStateByDateMap);
                 }
             }
         });
