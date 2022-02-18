@@ -186,9 +186,11 @@ public class SocialJetlagStats {
      */
     public float calculateSRI(BitSet prevDay, BitSet nextDay){
         BitSet minsInconsistentSleepState = (BitSet) prevDay.clone();
-        minsInconsistentSleepState.andNot(nextDay); // store inconsistent sleep state mins in prevDayTmp
+//        minsInconsistentSleepState.andNot(nextDay); // store inconsistent sleep state mins in prevDayTmp
+        minsInconsistentSleepState.xor(nextDay);
 
-        return (1.0f - (minsInconsistentSleepState.length()/1440.f)); // 1 - totalMinsOfInconsistentSleepState
+//        return (1.0f - (minsInconsistentSleepState.length()/1440.f)); // 1 - totalMinsOfInconsistentSleepState
+        return (1.0f - (minsInconsistentSleepState.cardinality()/1440.f));
     }
 
     /**
