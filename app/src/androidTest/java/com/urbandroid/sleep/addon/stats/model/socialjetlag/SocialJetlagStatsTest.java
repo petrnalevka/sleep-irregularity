@@ -222,7 +222,7 @@ public class SocialJetlagStatsTest {
     }
 
     @Test // does not work when only one ChronoRecord is given
-    public void testOneValMap() {
+    public void testOneEntrySleepStateMap_SRI() {
         ChronoRecords oneDayRecord = new ChronoRecords(Arrays.asList(new ChronoRecord[]{
                 //The first 3 records are in UTC timezone
                 new ChronoRecord(
@@ -237,12 +237,56 @@ public class SocialJetlagStatsTest {
     }
 
     @Test
-    public void testEmpyValMap() {
+    public void testEmptySleepStatesMap_SRI() {
         ChronoRecords emptyRecord = new ChronoRecords(Arrays.asList(new ChronoRecord[]{}));
         SocialJetlagStats  stats = new SocialJetlagStats(emptyRecord, false);
         List<Interval> recordsAsIntervals = stats.convertChronoRecordsToTimeIntervals(emptyRecord);
         TreeMap<String, BitSet> dayBitMap = stats.createSleepStateByDateMap(recordsAsIntervals);
+
+        //test SRI calculation
         float avgSRI = stats.calculateAverageSRI(dayBitMap);
         Assert.assertEquals(-1.0, avgSRI, 0.001); // should be -1 when only one chronorecord is given
+    }
+
+    @Test
+    public void testModifiedSleepRegularityIndex(){
+        float SRIScoreOne = 1.0f - (30.0f + 20.0f)/1440.f; // Score from 2018-11-11 and 2018-11-12
+        float SRIScoreTwo = 1.0f - (60.0f)/1440.f; // Score from 2018-11-12 and 2018-11-13
+        float SRIScoreThree = 1.0f - (60.0f)/1440.f; // Score from 2018-11-24 and 2018-11-25
+        float SRIScoreFour = 1.0f - (120.0f)/1440.f; // Score from 2018-11-25 and 2018-11-26
+
+        float mSRIScoreOne = Math.abs(SRIScoreOne - SRIScoreTwo);
+        float mSRIScoreTwo = Math.abs(SRIScoreThree - SRIScoreFour);
+
+        float expectedMSRIScore = (mSRIScoreOne + mSRIScoreTwo )/2.0f;
+        Assert.assertEquals(expectedMSRIScore, crStats.getSleepIrregularityModified(), .0001);
+    }
+
+    @Test
+    public void testEmptySleepStatesMap_MSRI() {
+        ChronoRecords emptyRecord = new ChronoRecords(Arrays.asList(new ChronoRecord[]{}));
+        SocialJetlagStats  stats = new SocialJetlagStats(emptyRecord, false);
+        List<Interval> recordsAsIntervals = stats.convertChronoRecordsToTimeIntervals(emptyRecord);
+        TreeMap<String, BitSet> dayBitMap = stats.createSleepStateByDateMap(recordsAsIntervals);
+
+        //test MSRI Calculation
+        float avgMSRI = stats.calculateAverageMSRI(dayBitMap);
+        Assert.assertEquals(-1.0, avgMSRI, 0.001); // should be -1 when only one chronorecord is given
+    }
+
+    @Test // does not work when only one ChronoRecord is given
+    public void testOneEntrySleepStateMap_MSRI() {
+        ChronoRecords oneDayRecord = new ChronoRecords(Arrays.asList(new ChronoRecord[]{
+                //The first 3 records are in UTC timezone
+                new ChronoRecord(
+                        Date.from(Instant.parse("2018-11-11T01:30:10Z")),
+                        Date.from(Instant.parse("2018-11-11T10:00:10Z")),
+                        1.5f, 10f, 7f)}));
+        SocialJetlagStats  stats = new SocialJetlagStats(oneDayRecord, false);
+        List<Interval> recordsAsIntervals = stats.convertChronoRecordsToTimeIntervals(oneDayRecord);
+        TreeMap<String, BitSet> dayBitMap = stats.createSleepStateByDateMap(recordsAsIntervals);
+
+        float avgMSRI = stats.calculateAverageMSRI(dayBitMap);
+        Assert.assertEquals(-1.0, avgMSRI, 0.001); // should be -1 when only one chronorecord is given
     }
 }

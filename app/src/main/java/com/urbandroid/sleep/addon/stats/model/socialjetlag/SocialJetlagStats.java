@@ -17,6 +17,7 @@ import org.joda.time.DateTimeZone;
 import org.joda.time.Duration;
 import org.joda.time.Interval;
 
+import java.sql.Array;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -25,6 +26,7 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeMap;
@@ -196,20 +198,15 @@ public class SocialJetlagStats {
     }
 
     /**
-     * Calculates average SRI across multiple, continuous dates
+     * Extracts SRI scores and groups them by continuous segments in a HashMap
      * @param sleepStateByDateMap
      * @return
      */
-    public float calculateAverageSRI(TreeMap<String, BitSet> sleepStateByDateMap){
-
-        float cumulativeSRI = 0;
-        float numSRIScores = 0;
+    public HashMap<Integer, List<Float>> extractSRIScores(TreeMap<String, BitSet> sleepStateByDateMap){
+        HashMap<Integer, List<Float>> groupedSRIScores = new HashMap<Integer, List<Float>>();
 
         Set keys = sleepStateByDateMap.keySet();
-
-        if (keys.size() <= 1){ // there should be at least two dates to calculate the SRI
-            return -1.0f;
-        }
+        int groupNum = 0;
 
         Iterator nextDayIt = keys.iterator();
         // iterate through pairs of days to calculate the SRI
@@ -222,24 +219,98 @@ public class SocialJetlagStats {
                 DateTime prevDate = new DateTime(prevDateKey);
                 DateTime nextDate = new DateTime(nextDateKey);
 
-                if(isNextDate(prevDate, nextDate)){
+                if(isNextDate(prevDate, nextDate)){ // if there are a continuous pair of days, calculate the SRI
+
                     BitSet prevDaySleepStates = sleepStateByDateMap.get(prevDateKey);
                     BitSet nextDaySleepStates = sleepStateByDateMap.get(nextDateKey);
 
                     // extract the date and month and if it is one
                     float sriScore = calculateSRI(prevDaySleepStates, nextDaySleepStates);
-                    cumulativeSRI += sriScore;
-                    numSRIScores ++;
 
-                } else{ // TODO: throw an error?
-                    System.out.println("Date ranges must be contiguous to compute the SRI. User provided date ranges: " + prevDateKey + "- " + nextDateKey);
+                    // insert score into corresponding group
+                    if(groupedSRIScores.containsKey(groupNum)){
+                        groupedSRIScores.get(groupNum).add(sriScore);
+                    } else {
+                        LinkedList<Float> listOfSRIScores = new LinkedList<Float>();
+                        listOfSRIScores.add(sriScore);
+                        groupedSRIScores.put(groupNum, listOfSRIScores);
+                    }
+                } else { // Dates are no longer continuous, make a new group
+                    groupNum++;
+                    System.out.println("Skipping SRI score calculation for following pair of dates. Date ranges must be contiguous to compute the SRI. User provided date ranges: " + prevDateKey + "- " + nextDateKey);
                 }
             }
-            return cumulativeSRI / numSRIScores;
-        } else { // TODO: throw an error?
-            System.out.println("You need at least two days to calculate SRI! You've only provided one.");
+        }
+        return groupedSRIScores;
+    }
+
+    /**
+     * Calculates average SRI across multiple, continuous dates
+     * @param sleepStateByDateMap
+     * @return
+     */
+    public float calculateAverageSRI(TreeMap<String, BitSet> sleepStateByDateMap){
+        Set keys = sleepStateByDateMap.keySet();
+
+        if (keys.size() < 2){ // there should be at least two dates to calculate the SRI
             return -1.0f;
         }
+
+        HashMap<Integer, List<Float>> groupedSRISCores = extractSRIScores(sleepStateByDateMap);
+
+        float cumulativeSRI = 0;
+        int numSRIScores = 0;
+
+        for ( List<Float> sriScores : groupedSRISCores.values()) {
+            final Iterator<Float> scoreIterator = sriScores.listIterator();
+            while(scoreIterator.hasNext()){
+                cumulativeSRI += scoreIterator.next();
+                numSRIScores++;
+            }
+        }
+        return cumulativeSRI / numSRIScores;
+    }
+
+    /**
+     * Calculates average mSRI across multiple, continuous dates
+     * The mSRI is the cumulative difference between pairs of SRI scores
+     * @param sleepStateByDateMap
+     * @return
+     */
+    public float calculateAverageMSRI(TreeMap<String, BitSet> sleepStateByDateMap){
+        Set keys = sleepStateByDateMap.keySet();
+
+        if (keys.size() < 3){ // there should be at least three dates to calculate the mSRI
+            return -1.0f;
+        }
+
+        HashMap<Integer, List<Float>> groupedSRISCores = extractSRIScores(sleepStateByDateMap);
+
+        float cumulativeMSRI = 0;
+        int numMSRIScores = 0;
+
+        for ( List<Float> sriScores : groupedSRISCores.values()) {
+            // if there are at least two sri scores, calculate the msri; else skip
+            if(sriScores.size() >= 2){
+                final Iterator<Float> scoreIterator = sriScores.listIterator();
+                float currSRI = scoreIterator.next();
+                while(scoreIterator.hasNext()){
+                    float nextSRI = scoreIterator.next();
+                    float mSRI = Math.abs(currSRI - nextSRI);
+                    cumulativeMSRI += mSRI;
+                    numMSRIScores++;
+                    currSRI = nextSRI; // update pointer
+                }
+            }
+        }
+
+        return (numMSRIScores == 0 ) ? -1.0f : cumulativeMSRI / numMSRIScores;
+    }
+
+    public float getSleepIrregularityModified(){
+        List<Interval> awakeTimes = convertChronoRecordsToTimeIntervals(records);
+        TreeMap<String, BitSet> sleepStateByDateMap = createSleepStateByDateMap(awakeTimes);
+        return calculateAverageMSRI(sleepStateByDateMap);
     }
 
     public float getSleepIrregularity() {
