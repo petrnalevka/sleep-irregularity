@@ -56,6 +56,7 @@ This is the average cumulative differences between SRI scores. It is to implicit
 * The `SleepRegularityIndexUtil.java` file includes the actual implementation of the Sleep Regularity Index. 
 - It has a process in which it discretizes each 24 hour day to 1440 min representation BitSet 
 - Let's say there exists BitSet b. If someone is awake at time 14:05, then it's at the 845th minute of the day (14*60 + 5). So b[i] is set to 1. Else, if the person is asleep then the value at b[i] would be 0.  
+- Now let's say there is day1 BitSet d1 and day2 BitSet d2. A user has "regularity" or "consistency" if d1[i] == d2[i] for all i from 0 to 1440. This means if d1[i] == 0 and d2[i] == 1, there is inconsistent sleep because 0=/=1. There is consistent state if d1[i] ==1 and d2[i] ==1 or if d1[i] == 0 and d2[i] == 0. 
 
 ## SRI Total Calcuation 
 1. We group all continuous dates and calculate SRI scores. Let's say there is 11-20, 11-21, 11-22, 11-25, 11-26. 
