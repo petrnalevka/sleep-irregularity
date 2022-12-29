@@ -26,6 +26,10 @@ public class SocialJetlagStatsTest {
                     Date.from(Instant.parse("2018-11-11T10:00:10Z")),
                     1.5f, 10f, 7f),
             new ChronoRecord(
+                    Date.from(Instant.parse("2018-11-11T12:40:10Z")),
+                    Date.from(Instant.parse("2018-11-11T13:00:10Z")),
+                    1.5f, 10f, 7f),
+            new ChronoRecord(
                     Date.from(Instant.parse("2018-11-12T01:00:10Z")),
                     Date.from(Instant.parse("2018-11-12T10:00:10Z")),
                     1.0f, 10f, 7f),
@@ -50,30 +54,15 @@ public class SocialJetlagStatsTest {
 
     private SocialJetlagStats crStats = new SocialJetlagStats(cr, false);
 
-
     @Test
-    public void useUtc() {
-        assertThat(crStats.getSleepIrregularity()).isEqualTo(0.42305467f);
-    }
+    public void testSleepRegularityIndex() {
+        float SRIScoreOne = 1.0f - (30.0f + 20.0f)/1440.f; // Score from 2018-11-11 and 2018-11-12
+        float SRIScoreTwo = 1.0f - (60.0f)/1440.f; // Score from 2018-11-12 and 2018-11-13
+        float SRIScoreThree = 1.0f - (60.0f)/1440.f; // Score from 2018-11-24 and 2018-11-25
+        float SRIScoreFour = 1.0f - (120.0f)/1440.f; // Score from 2018-11-25 and 2018-11-26
 
-    @Test
-    public void dontUseUtc() {
-        assertThat(crStats.getSleepIrregularity()).isEqualTo(0.7163131f);
-    }
-
-    @Test
-    public void testGetRecordIrregularity() {
-        assertThat(CyclicFloatKt.center(crStats.getRecords().getMidSleeps(), 24)).isEqualTo(6.625f);
-        assertThat(ScienceUtil.avg(crStats.getRecords().getLengths())).isEqualTo(6.5f);
-
-        StatRecord record = new StatRecord(
-                Date.from(Instant.parse("2018-11-11T01:30:10Z")),
-                Date.from(Instant.parse("2018-11-11T10:00:10Z")),
-                TimeZone.getTimeZone("UTC"),
-                0, 7.0);
-        record.setTrackLengthInHours(8.5f);
-
-        assertThat(crStats.getRecordIrregularity(record)).isEqualTo( ((6.625f - 3.5f) + (8.5f - 6.5f)) / 2f );
+        float expectedSRIScore = (SRIScoreOne + SRIScoreTwo + SRIScoreThree + SRIScoreFour)/4.0f;
+        Assert.assertEquals(expectedSRIScore, crStats.getSleepIrregularity(), .0001);
     }
 
     @Test
