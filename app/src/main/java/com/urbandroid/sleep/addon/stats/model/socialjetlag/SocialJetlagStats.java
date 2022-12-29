@@ -9,6 +9,7 @@ import com.urbandroid.sleep.addon.stats.model.StatRecord;
 import com.urbandroid.sleep.addon.stats.model.socialjetlag.clustering.ClusteredChronoRecords;
 import com.urbandroid.sleep.addon.stats.model.socialjetlag.clustering.SleepLabel;
 import com.urbandroid.util.ScienceUtil;
+import com.urbandroid.sleep.addon.stats.model.socialjetlag.SleepRegularityIndexUtil;
 
 import org.apache.commons.math3.util.Pair;
 
@@ -71,10 +72,12 @@ public class SocialJetlagStats {
                 if (records.size() < 5) {
                     return -1f;
                 } else {
-                    float[] midSleeps = useUTCforIrregularity ? records.getMidSleepUTC() : records.getMidSleeps();
-                    float midSleepStd = CyclicFloatKt.stdev(midSleeps, 24f);
-                    float sleepLenStd = ScienceUtil.stddev(records.getLengths());
-                    return (midSleepStd + sleepLenStd) / 2;
+                    SleepRegularityIndexUtil sriUtils = new SleepRegularityIndexUtil();
+                    return sriUtils.getSleepIrregularity(records);
+//                    float[] midSleeps = useUTCforIrregularity ? records.getMidSleepUTC() : records.getMidSleeps();
+//                    float midSleepStd = CyclicFloatKt.stdev(midSleeps, 24f);
+//                    float sleepLenStd = ScienceUtil.stddev(records.getLengths());
+//                    return (midSleepStd + sleepLenStd) / 2;
                 }
             }
         });
