@@ -48,24 +48,23 @@ public class SocialJetlagStatsTest {
                     3.0f, 11f, 6f),
     }));
 
+    private SocialJetlagStats crStats = new SocialJetlagStats(cr, false);
+
+
     @Test
     public void useUtc() {
-        SocialJetlagStats  stats = new SocialJetlagStats(cr, true);
-        assertThat(stats.getSleepIrregularity()).isEqualTo(0.42305467f);
+        assertThat(crStats.getSleepIrregularity()).isEqualTo(0.42305467f);
     }
 
     @Test
     public void dontUseUtc() {
-        SocialJetlagStats  stats = new SocialJetlagStats(cr, false);
-        assertThat(stats.getSleepIrregularity()).isEqualTo(0.7163131f);
+        assertThat(crStats.getSleepIrregularity()).isEqualTo(0.7163131f);
     }
 
     @Test
     public void testGetRecordIrregularity() {
-
-        SocialJetlagStats  stats = new SocialJetlagStats(cr, false);
-        assertThat(CyclicFloatKt.center(stats.getRecords().getMidSleeps(), 24)).isEqualTo(6.625f);
-        assertThat(ScienceUtil.avg(stats.getRecords().getLengths())).isEqualTo(6.5f);
+        assertThat(CyclicFloatKt.center(crStats.getRecords().getMidSleeps(), 24)).isEqualTo(6.625f);
+        assertThat(ScienceUtil.avg(crStats.getRecords().getLengths())).isEqualTo(6.5f);
 
         StatRecord record = new StatRecord(
                 Date.from(Instant.parse("2018-11-11T01:30:10Z")),
@@ -74,29 +73,40 @@ public class SocialJetlagStatsTest {
                 0, 7.0);
         record.setTrackLengthInHours(8.5f);
 
-        assertThat(stats.getRecordIrregularity(record)).isEqualTo( ((6.625f - 3.5f) + (8.5f - 6.5f)) / 2f );
+        assertThat(crStats.getRecordIrregularity(record)).isEqualTo( ((6.625f - 3.5f) + (8.5f - 6.5f)) / 2f );
     }
 
     @Test
     public void calculateSRIEdgeCases() {
-        SocialJetlagStats  stats = new SocialJetlagStats(cr, false);
-
         // one bitset empty
         BitSet day1Interval = new BitSet(1440);
-        BitSet day2Interval = new BitSet();
+        BitSet day2Interval = new BitSet(); //empty set
         day1Interval.set(0,720);
-        Assert.assertEquals(1.0, stats.calculateSRI(day1Interval, day2Interval), .0001);
+        Assert.assertEquals(-1.0f, crStats.calculateSRI(day1Interval, day2Interval), .0001);
+        Assert.assertEquals(-1.0f, crStats.calculateSRI(day2Interval, day1Interval), .0001);
+    }
 
-        // awake 24 hours
-        BitSet interval3 = new BitSet(1440);
-        BitSet interval4 = new BitSet(1440);
-        interval3.set(0,1440);
-        Assert.assertEquals(0, stats.calculateSRI(interval3, interval4), .0001);
+    @Test public void extremeUsers(){
+        // awake 24 hours for one day and asleep 24hrs for the next
+        BitSet day1SleepStates = new BitSet(1440);
+        BitSet day2SleepStates = new BitSet(1440);
+        day1SleepStates.set(0,1440, true);
+        day2SleepStates.set(0,1440, false);
+        Assert.assertEquals(0, crStats.calculateSRI(day1SleepStates, day2SleepStates), .0001);
 
-        // awake 0 hours
-        BitSet interval5 = new BitSet(1440);
-        BitSet interval6 = new BitSet(1440);
-        Assert.assertEquals(1.0, stats.calculateSRI(interval5, interval6), .0001);
+        // awake two days in a row
+        BitSet day3SleepStates = new BitSet(1440);
+        BitSet day4SleepStates = new BitSet(1440);
+        day3SleepStates.set(0,1440, true);
+        day4SleepStates.set(0,1440, true);
+        Assert.assertEquals(1.0, crStats.calculateSRI(day3SleepStates, day4SleepStates), .0001);
+
+        // asleep two days in a row
+        BitSet day5SleepStates = new BitSet(1440);
+        BitSet day6SleepStates = new BitSet(1440);
+        day5SleepStates.set(0,1440, false);
+        day6SleepStates.set(0,1440, false);
+        Assert.assertEquals(1.0, crStats.calculateSRI(day5SleepStates, day6SleepStates), .0001);
     }
 
     @Test
@@ -106,41 +116,40 @@ public class SocialJetlagStatsTest {
         day1Interval.set(0,720);
         day2Interval.set(0,720);
         // testing for when the intevals are the same
-        SocialJetlagStats  stats = new SocialJetlagStats(cr, false);
-        float sameInterval = stats.calculateSRI(day1Interval, day2Interval);
+        float sameInterval = crStats.calculateSRI(day1Interval, day2Interval);
         Assert.assertEquals(1.0, sameInterval, .0001);
 
         // general test, one interval enclosed inside the other
         BitSet day3Interval = new BitSet(1440);
         day3Interval.set(0,1440);
-        Assert.assertEquals(0.5, stats.calculateSRI(day1Interval, day3Interval), .0001);
-        Assert.assertEquals(0.5, stats.calculateSRI(day2Interval, day3Interval), .0001);
+        Assert.assertEquals(0.5, crStats.calculateSRI(day1Interval, day3Interval), .0001);
+        Assert.assertEquals(0.5, crStats.calculateSRI(day2Interval, day3Interval), .0001);
 
         // testing when intervals are completely different
         BitSet day4Interval = new BitSet(1440);
         day4Interval.set(720, 1440);
-        Assert.assertEquals(0, stats.calculateSRI(day1Interval, day4Interval), .0001);
+        Assert.assertEquals(0, crStats.calculateSRI(day1Interval, day4Interval), .0001);
 
         // testing when there is some overlap
         BitSet interval5 = new BitSet(1440);
         BitSet interval6 = new BitSet(1440);
         interval5.set(0, 720);
         interval6.set(360, 1440);
-        Assert.assertEquals(0.25, stats.calculateSRI(interval5, interval6), .0001);
+        Assert.assertEquals(0.25, crStats.calculateSRI(interval5, interval6), .0001);
 
         // single overlap
         BitSet interval7 = new BitSet(1440);
         BitSet interval8 = new BitSet(1440);
         interval7.set(0, 2);
         interval8.set(1, 2);
-        Assert.assertEquals(1 - 1.0/1440.0, stats.calculateSRI(interval7, interval8), .000001);
+        Assert.assertEquals(1 - 1.0/1440.0, crStats.calculateSRI(interval7, interval8), .000001);
 
         // pretty regular
         BitSet interval9 = new BitSet(1440);
         BitSet interval10 = new BitSet(1440);
         interval9.set(0, 720);
         interval10.set(100, 820);
-        Assert.assertEquals(1.0 - 200.0/1440.0, stats.calculateSRI(interval9, interval10), .000001);
+        Assert.assertEquals(1.0 - 200.0/1440.0, crStats.calculateSRI(interval9, interval10), .000001);
     }
 
     @Test
@@ -214,7 +223,13 @@ public class SocialJetlagStatsTest {
         List<Interval> recordsAsIntervals = stats.convertChronoRecordsToTimeIntervals(halfDayDiff);
         TreeMap<String, BitSet> dayBitMap = stats.createSleepStateByDateMap(recordsAsIntervals);
         float avgSRI = stats.calculateAverageSRI(dayBitMap);
-        Assert.assertEquals(1.0-60.0/1440.0, avgSRI, 0.001);
+
+        // SRI Score One
+        float numSRIScores = 2;
+        float sriScore1 = 1.0f-60.0f/1440.0f;
+        float sriScore2 = 1.0f-60.0f/1440.0f;
+        float expectedSRI = (sriScore1 + sriScore2)/numSRIScores;
+        Assert.assertEquals(expectedSRI, avgSRI, 0.001);
     }
 
     @Test // does not work when only one ChronoRecord is given

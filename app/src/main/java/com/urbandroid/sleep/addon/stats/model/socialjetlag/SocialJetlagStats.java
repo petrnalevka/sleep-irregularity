@@ -185,11 +185,13 @@ public class SocialJetlagStats {
      * @return
      */
     public float calculateSRI(BitSet prevDay, BitSet nextDay){
-        BitSet minsInconsistentSleepState = (BitSet) prevDay.clone();
-//        minsInconsistentSleepState.andNot(nextDay); // store inconsistent sleep state mins in prevDayTmp
-        minsInconsistentSleepState.xor(nextDay);
+        // Make sure not to use isEmpty as that checks if there are no falses
+        if(prevDay.size() < 1440 || nextDay.size() < 1440 ){
+            return -1.0f;
+        }
+        BitSet minsInconsistentSleepState = (BitSet) prevDay.clone(); //store inconsistent sleep state mins
+        minsInconsistentSleepState.xor(nextDay); // true means prevDay(i) and nextDay(i) had different values
 
-//        return (1.0f - (minsInconsistentSleepState.length()/1440.f)); // 1 - totalMinsOfInconsistentSleepState
         return (1.0f - (minsInconsistentSleepState.cardinality()/1440.f));
     }
 
@@ -201,8 +203,13 @@ public class SocialJetlagStats {
     public float calculateAverageSRI(TreeMap<String, BitSet> sleepStateByDateMap){
 
         float cumulativeSRI = 0;
+        float numSRIScores = 0;
 
         Set keys = sleepStateByDateMap.keySet();
+
+        if (keys.size() <= 1){ // there should be at least two dates to calculate the SRI
+            return -1.0f;
+        }
 
         Iterator nextDayIt = keys.iterator();
         // iterate through pairs of days to calculate the SRI
@@ -222,12 +229,13 @@ public class SocialJetlagStats {
                     // extract the date and month and if it is one
                     float sriScore = calculateSRI(prevDaySleepStates, nextDaySleepStates);
                     cumulativeSRI += sriScore;
+                    numSRIScores ++;
 
                 } else{ // TODO: throw an error?
                     System.out.println("Date ranges must be contiguous to compute the SRI. User provided date ranges: " + prevDateKey + "- " + nextDateKey);
                 }
             }
-            return cumulativeSRI / (keys.size() - 1); // averageSRI = cumulativeSRI / (numDays - 1)
+            return cumulativeSRI / numSRIScores;
         } else { // TODO: throw an error?
             System.out.println("You need at least two days to calculate SRI! You've only provided one.");
             return -1.0f;
