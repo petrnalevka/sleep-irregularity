@@ -37,11 +37,11 @@ public class SleepRegularityIndexUtil {
      */
     protected Interval[] splitOverFlowingDate(DateTime startTime, DateTime endTime){
         DateTime firstIntervalEndTime = new DateTime(
-                startTime.year().get(), startTime.monthOfYear().get(), startTime.dayOfMonth().get(), 23, 59
+                startTime.year().get(), startTime.monthOfYear().get(), startTime.dayOfMonth().get(), 23, 59, 59, 999
         ).withZoneRetainFields(DateTimeZone.UTC);
 
         DateTime secondIntervalStartTime = new DateTime(
-                endTime.year().get(), endTime.monthOfYear().get(), endTime.dayOfMonth().get(), 00, 00
+                endTime.year().get(), endTime.monthOfYear().get(), endTime.dayOfMonth().get(), 00, 00, 00, 000
         ).withZoneRetainFields(DateTimeZone.UTC);
 
         return new Interval[] {new Interval(startTime, firstIntervalEndTime), new Interval(secondIntervalStartTime, endTime)};
