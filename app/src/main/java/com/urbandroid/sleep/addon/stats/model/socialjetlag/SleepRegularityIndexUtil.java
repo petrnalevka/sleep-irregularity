@@ -14,6 +14,8 @@ import org.apache.commons.math3.util.Pair;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.Interval;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -29,6 +31,8 @@ import java.util.TreeMap;
 
 public class SleepRegularityIndexUtil {
 
+    public static boolean DO_SRI = true;
+
     /**
      * Splits a date that over flows to the next day into two intervals
      * @param startTime StartTime of an interval that overflows
@@ -37,11 +41,11 @@ public class SleepRegularityIndexUtil {
      */
     protected Interval[] splitOverFlowingDate(DateTime startTime, DateTime endTime){
         DateTime firstIntervalEndTime = new DateTime(
-                startTime.year().get(), startTime.monthOfYear().get(), startTime.dayOfMonth().get(), 23, 59
+                startTime.year().get(), startTime.monthOfYear().get(), startTime.dayOfMonth().get(), 23, 59, 59, 999
         ).withZoneRetainFields(DateTimeZone.UTC);
 
         DateTime secondIntervalStartTime = new DateTime(
-                endTime.year().get(), endTime.monthOfYear().get(), endTime.dayOfMonth().get(), 00, 00
+                endTime.year().get(), endTime.monthOfYear().get(), endTime.dayOfMonth().get(), 0, 0, 0, 0
         ).withZoneRetainFields(DateTimeZone.UTC);
 
         return new Interval[] {new Interval(startTime, firstIntervalEndTime), new Interval(secondIntervalStartTime, endTime)};
@@ -91,6 +95,7 @@ public class SleepRegularityIndexUtil {
 
         return nonOverFlowingTimeIntervals;
     }
+    private final static String DATE_PATTERN = "yyyy-MM-dd";
 
     /**
      * (1) Store in values awakeTimes as a 1440 (24 hrs x 60 min) sized bitset
@@ -109,7 +114,7 @@ public class SleepRegularityIndexUtil {
             BitSet sleepState;
 
             DateTime awakeIntervalStartTime = awakeInterval.getStart();
-            String awakeIntervalFrom = awakeIntervalStartTime.toString("yyyy-MM-dd");
+            String awakeIntervalFrom = awakeIntervalStartTime.toString(DATE_PATTERN);
 
             if(sleepStateByDateMap.containsKey(awakeIntervalFrom)){
                 sleepState = sleepStateByDateMap.get(awakeIntervalFrom);
@@ -166,8 +171,10 @@ public class SleepRegularityIndexUtil {
 
                 String prevDateKey = (String) prevDayIt.next();
                 String nextDateKey =  (String) nextDayIt.next();
-                DateTime prevDate = new DateTime(prevDateKey);
-                DateTime nextDate = new DateTime(nextDateKey);
+
+                DateTimeFormatter formatter = DateTimeFormat.forPattern(DATE_PATTERN);
+                DateTime prevDate = DateTime.parse(prevDateKey, formatter);
+                DateTime nextDate = DateTime.parse(prevDateKey, formatter);
 
                 if(isNextDate(prevDate, nextDate)){ // if there are a continuous pair of days, calculate the SRI
 
@@ -187,7 +194,7 @@ public class SleepRegularityIndexUtil {
                     }
                 } else { // Dates are no longer continuous, make a new group
                     groupNum++;
-                    System.out.println("Skipping SRI score calculation for following pair of dates. Date ranges must be contiguous to compute the SRI. User provided date ranges: " + prevDateKey + "- " + nextDateKey);
+                    Logger.logSevere("Skipping SRI score calculation for following pair of dates. Date ranges must be contiguous to compute the SRI. User provided date ranges: " + prevDateKey + "- " + nextDateKey);
                 }
             }
         }
@@ -230,7 +237,7 @@ public class SleepRegularityIndexUtil {
     protected float calculateAverageMSRI(TreeMap<String, BitSet> sleepStateByDateMap){
         Set keys = sleepStateByDateMap.keySet();
 
-        if (keys.size() < 3){ // there should be at least three dates to calculate the mSRI
+        if (keys.size() < 3) { // there should be at least three dates to calculate the mSRI
             return -1.0f;
         }
 
@@ -264,9 +271,13 @@ public class SleepRegularityIndexUtil {
     }
 
     public float getSleepIrregularity(ChronoRecords records) {
+
+
         List<Interval> awakeTimes = convertChronoRecordsToTimeIntervals(records);
         TreeMap<String, BitSet> sleepStateByDateMap = createSleepStateByDateMap(awakeTimes);
 
-        return calculateAverageSRI(sleepStateByDateMap);
+        float result = calculateAverageSRI(sleepStateByDateMap);
+//        Logger.logSevere("REGULARITY SRI records " + records.getFrom() + " - " + records.getTo() + " = " + result);
+        return result;
     }
 }
