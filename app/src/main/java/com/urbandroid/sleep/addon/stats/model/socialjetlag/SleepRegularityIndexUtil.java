@@ -8,12 +8,17 @@ import com.urbandroid.common.logging.Logger;
 import com.urbandroid.sleep.addon.stats.model.StatRecord;
 import com.urbandroid.sleep.addon.stats.model.socialjetlag.clustering.ClusteredChronoRecords;
 import com.urbandroid.sleep.addon.stats.model.socialjetlag.clustering.SleepLabel;
+import com.urbandroid.sleep.domain.SleepRecord;
 import com.urbandroid.util.ScienceUtil;
 
 import org.apache.commons.math3.util.Pair;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.Interval;
+import org.joda.time.LocalDate;
+import org.joda.time.LocalDateTime;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -29,6 +34,7 @@ import java.util.TreeMap;
 
 public class SleepRegularityIndexUtil {
 
+    private final static String DATE_PATTERN = "yyyy-MM-dd";
     /**
      * Splits a date that over flows to the next day into two intervals
      * @param startTime StartTime of an interval that overflows
@@ -36,13 +42,13 @@ public class SleepRegularityIndexUtil {
      * @return Interval[] with spliced times
      */
     protected Interval[] splitOverFlowingDate(DateTime startTime, DateTime endTime){
-        DateTime firstIntervalEndTime = new DateTime(
-                startTime.year().get(), startTime.monthOfYear().get(), startTime.dayOfMonth().get(), 23, 59
-        ).withZoneRetainFields(DateTimeZone.UTC);
+        DateTime firstIntervalEndTime = new LocalDateTime(
+                startTime.year().get(), startTime.monthOfYear().get(), startTime.dayOfMonth().get(), 23, 59, 59, 999
+        ).toDateTime(DateTimeZone.UTC);
 
-        DateTime secondIntervalStartTime = new DateTime(
-                endTime.year().get(), endTime.monthOfYear().get(), endTime.dayOfMonth().get(), 00, 00
-        ).withZoneRetainFields(DateTimeZone.UTC);
+        DateTime secondIntervalStartTime = new LocalDateTime(
+                endTime.year().get(), endTime.monthOfYear().get(), endTime.dayOfMonth().get(), 0, 0, 0, 0
+        ).toDateTime(DateTimeZone.UTC);
 
         return new Interval[] {new Interval(startTime, firstIntervalEndTime), new Interval(secondIntervalStartTime, endTime)};
     }
@@ -76,8 +82,8 @@ public class SleepRegularityIndexUtil {
         for(int i = 0; i< listOfRecords.size(); i++){
             ChronoRecord cr1 = listOfRecords.get(i);
 
-            DateTime intervalStart = new DateTime(cr1.getFrom()).withZone(DateTimeZone.UTC);
-            DateTime intervalEnd = new DateTime(cr1.getTo()).withZone(DateTimeZone.UTC);
+            DateTime intervalStart = new LocalDateTime(cr1.getFrom()).toDateTime(DateTimeZone.UTC);
+            DateTime intervalEnd = new LocalDateTime(cr1.getTo()).toDateTime(DateTimeZone.UTC);
 
             if(isNextDate(intervalStart, intervalEnd)){
                 // Split interval to two, i1, i2
@@ -109,7 +115,7 @@ public class SleepRegularityIndexUtil {
             BitSet sleepState;
 
             DateTime awakeIntervalStartTime = awakeInterval.getStart();
-            String awakeIntervalFrom = awakeIntervalStartTime.toString("yyyy-MM-dd");
+            String awakeIntervalFrom = awakeIntervalStartTime.toString(DATE_PATTERN);
 
             if(sleepStateByDateMap.containsKey(awakeIntervalFrom)){
                 sleepState = sleepStateByDateMap.get(awakeIntervalFrom);
@@ -166,8 +172,10 @@ public class SleepRegularityIndexUtil {
 
                 String prevDateKey = (String) prevDayIt.next();
                 String nextDateKey =  (String) nextDayIt.next();
-                DateTime prevDate = new DateTime(prevDateKey);
-                DateTime nextDate = new DateTime(nextDateKey);
+
+                DateTimeFormatter formatter = DateTimeFormat.forPattern(DATE_PATTERN);
+                DateTime prevDate = formatter.parseLocalDateTime(prevDateKey).toDateTime(DateTimeZone.UTC);
+                DateTime nextDate = formatter.parseLocalDateTime(nextDateKey).toDateTime(DateTimeZone.UTC);
 
                 if(isNextDate(prevDate, nextDate)){ // if there are a continuous pair of days, calculate the SRI
 
@@ -187,7 +195,7 @@ public class SleepRegularityIndexUtil {
                     }
                 } else { // Dates are no longer continuous, make a new group
                     groupNum++;
-                    System.out.println("Skipping SRI score calculation for following pair of dates. Date ranges must be contiguous to compute the SRI. User provided date ranges: " + prevDateKey + "- " + nextDateKey);
+                    Logger.logSevere("Skipping SRI score calculation for following pair of dates. Date ranges must be contiguous to compute the SRI. User provided date ranges: " + prevDateKey + "- " + nextDateKey);
                 }
             }
         }
@@ -230,7 +238,7 @@ public class SleepRegularityIndexUtil {
     protected float calculateAverageMSRI(TreeMap<String, BitSet> sleepStateByDateMap){
         Set keys = sleepStateByDateMap.keySet();
 
-        if (keys.size() < 3){ // there should be at least three dates to calculate the mSRI
+        if (keys.size() < 3) { // there should be at least three dates to calculate the mSRI
             return -1.0f;
         }
 
@@ -264,9 +272,10 @@ public class SleepRegularityIndexUtil {
     }
 
     public float getSleepIrregularity(ChronoRecords records) {
-        List<Interval> awakeTimes = convertChronoRecordsToTimeIntervals(records);
-        TreeMap<String, BitSet> sleepStateByDateMap = createSleepStateByDateMap(awakeTimes);
+	List<Interval> awakeTimes = convertChronoRecordsToTimeIntervals(records);
+	TreeMap<String, BitSet> sleepStateByDateMap = createSleepStateByDateMap(awakeTimes);
 
-        return calculateAverageSRI(sleepStateByDateMap);
+	float result = calculateAverageSRI(sleepStateByDateMap);
+	return result;
     }
 }
