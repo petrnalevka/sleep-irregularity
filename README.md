@@ -62,7 +62,7 @@ This is the average cumulative differences between SRI scores. It is to implicit
 1. We group all continuous dates and calculate SRI scores. Let's say there is 11-20, 11-21, 11-22, 11-25, 11-26. 
 2. Then this is grouped into two. Group1: ( 11-20, 11-21, 11-22) and Group 2: ( 11-25, 11-26 ). 
 3. Since we can only calculate SRI from pairs of days, Group1 will give us 2 SRI scores sri_1, sri_2. Group 2 will give us 1 SRI score sri_3. In total, there are 3 SRI scores. 
-4. So, we calculate the average as the following: (sri_1 + sri_2 + sri_3)/3. 
+4. So, we calculate the average as the following: (sri_1 + sri_2 + sri_3)/3, the total_sri_scores/total_num_sri_scores
 
 ## mSRI Total Calculation 
 1. Let's say there is 11-20, 11-21, 11-22, 11-25, 11-26, 11-27, 11-29, 11-30. 
